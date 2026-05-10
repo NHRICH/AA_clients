@@ -93,14 +93,26 @@ def generate_maps_link(name: str, neighborhood: str) -> str:
     encoded_query = urllib.parse.quote_plus(query)
     return f"https://www.google.com/maps/search/?api=1&query={encoded_query}"
 
+def _strip_html_and_newlines(text: str) -> str:
+    if not text:
+        return ""
+    # Remove HTML tags
+    clean = re.sub(r'<[^>]+>', '', text)
+    # Replace newlines and extra spaces
+    clean = re.sub(r'[\r\n]+', ' ', clean)
+    return re.sub(r'\s+', ' ', clean).strip()
+
 def parse_brave_result(result: dict, neighborhood: str) -> dict | None:
     url  = result.get("url", "")
     if _is_aggregator(url):
         return None
 
-    title       = result.get("title", "").strip()
-    description = result.get("description", "")
-    all_text    = " ".join([description] + result.get("extra_snippets", []))
+    title       = _strip_html_and_newlines(result.get("title", ""))
+    description = _strip_html_and_newlines(result.get("description", ""))
+    all_text    = " ".join([description] + [_strip_html_and_newlines(s) for s in result.get("extra_snippets", [])])
+
+    address_match = _ADDRESS_RE.search(all_text)
+    address_str = _strip_html_and_newlines(address_match.group(1)) if address_match else ""
 
     return {
         "name":          title,
@@ -108,7 +120,7 @@ def parse_brave_result(result: dict, neighborhood: str) -> dict | None:
         "description":   description,
         "category":      "Supermarket",
         "neighborhood":  neighborhood,
-        "address":       _ADDRESS_RE.search(all_text).group(1).strip() if _ADDRESS_RE.search(all_text) else "",
+        "address":       address_str,
         "phone":         _PHONE_RE.search(all_text).group(0).strip() if _PHONE_RE.search(all_text) else "",
         "rating":        float(_RATING_RE.search(all_text).group(1)) if _RATING_RE.search(all_text) else None,
         "google_maps_url": generate_maps_link(title, neighborhood),

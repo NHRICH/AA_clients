@@ -16,8 +16,9 @@ import pandas as pd
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERP_OUTPUT_DIR = os.path.join(ROOT_DIR, "output")
 BRAVE_OUTPUT_DIR = os.path.join(ROOT_DIR, "Adiss_Brave_Search", "output")
-MASTER_CSV_PATH = os.path.join(SERP_OUTPUT_DIR, "all_venues_addis_abeba_master.csv")
-MASTER_JSON_PATH = os.path.join(SERP_OUTPUT_DIR, "all_venues_addis_abeba_master.json")
+SUPERMARKETS_OUTPUT_DIR = os.path.join(ROOT_DIR, "Adiss_Supermarkets_Search", "output")
+MASTER_CSV_PATH = os.path.join(SERP_OUTPUT_DIR, "all_venues_addis_abeba_master_cleaned.csv")
+MASTER_JSON_PATH = os.path.join(SERP_OUTPUT_DIR, "all_venues_addis_abeba_master_cleaned.json")
 
 # Define target columns to keep unified
 UNIFIED_COLUMNS = [
@@ -45,16 +46,14 @@ def load_serpapi_files() -> list[pd.DataFrame]:
 
 def load_brave_files() -> list[pd.DataFrame]:
     dfs = []
+    
+    # 1. Brave Search files
     files = ["bars_addis_brave.csv", "nightclubs_addis_brave.csv"]
     for f in files:
         path = os.path.join(BRAVE_OUTPUT_DIR, f)
         if os.path.exists(path) and os.path.getsize(path) > 10:
             df = pd.read_csv(path)
-            # Map columns to unified schema
-            df.rename(columns={
-                "url": "website_url",
-                "address": "full_address"
-            }, inplace=True)
+            df.rename(columns={"url": "website_url", "address": "full_address"}, inplace=True)
             df["google_maps_url"] = None
             df["review_count"] = None
             df["source"] = "Brave Search API"
@@ -63,13 +62,42 @@ def load_brave_files() -> list[pd.DataFrame]:
                 if col not in df.columns:
                     df[col] = None
             dfs.append(df[UNIFIED_COLUMNS])
+            
+    # 2. Supermarkets files
+    files = ["supermarkets_addis_abeba.csv"]
+    for f in files:
+        path = os.path.join(SUPERMARKETS_OUTPUT_DIR, f)
+        if os.path.exists(path) and os.path.getsize(path) > 10:
+            df = pd.read_csv(path)
+            df.rename(columns={"url": "website_url", "address": "full_address"}, inplace=True)
+            df["review_count"] = None
+            df["source"] = "Brave Search API"
+            
+            for col in UNIFIED_COLUMNS:
+                if col not in df.columns:
+                    df[col] = None
+            dfs.append(df[UNIFIED_COLUMNS])
+            
     return dfs
 
+import re
+def strip_html_and_newlines(text):
+    if not isinstance(text, str):
+        return text
+    clean = re.sub(r'<[^>]+>', '', text)
+    clean = re.sub(r'[\r\n]+', ' ', clean)
+    return re.sub(r'\s+', ' ', clean).strip()
+
 def clean_and_organize(df: pd.DataFrame) -> pd.DataFrame:
+    # 0. Filter out bad domains (Wikipedia, Sewasew dictionaries)
+    bad_domains = ["wikipedia.org", "sewasew.com", "wikiwand.com", "mapcarta.com"]
+    df = df[~df["website_url"].fillna("").str.contains("|".join(bad_domains), case=False, regex=True)]
+
     # 1. Clean strings
-    for col in ["name", "category", "neighborhood", "full_address", "phone", "website_url"]:
+    for col in ["name", "category", "neighborhood", "full_address", "phone", "website_url", "links_on_site"]:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.strip().replace("nan", None).replace("None", None)
+            df[col] = df[col].apply(strip_html_and_newlines)
+            df[col] = df[col].replace("nan", None).replace("None", None)
             
     # Fix some common missing values
     df.loc[df["name"] == "", "name"] = None
