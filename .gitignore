@@ -4,3 +4,7 @@ venv/
 __pycache__/
 *.pyc
 *.pyo
+
+# Ignore temporary browser profiles and script logs
+whatsapp_profile*/
+PyWhatKit_DB.txt
